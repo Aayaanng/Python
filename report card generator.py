@@ -1,6 +1,8 @@
 name = input("What is  your name")
-subj_1
-subj_2
-Subj_3
-subj_4
-subj_5
+subj_1 = input("What did you get in maths")
+subj_2 = input("what did you get in science")
+Subj_3 = input("What did you get in english")
+subj_4 = input("What did you get in hindi")
+subj_5 = input("What did you get in spanish")
+subj_6 = input("What did you get in history")
+subj_7 = input("What did you get in geography")
