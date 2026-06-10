@@ -1,12 +1,12 @@
 def subj():
     name = input("What is your name? ")
-    subj_1 = int(input("What did you get in maths? "))  # Convert to int
-    subj_2 = int(input("What did you get in science? "))  # Convert to int
-    subj_3 = int(input("What did you get in english? "))  # Convert to int
-    subj_4 = int(input("What did you get in hindi? "))  # Convert to int
-    subj_5 = int(input("What did you get in spanish? "))  # Convert to int
-    subj_6 = int(input("What did you get in history? "))  # Convert to int
-    subj_7 = int(input("What did you get in geography? "))  # Convert to int
+    subj_1 = int(input("What did you get in maths? "))  
+    subj_2 = int(input("What did you get in science? "))
+    subj_3 = int(input("What did you get in english? "))
+    subj_4 = int(input("What did you get in hindi? "))  
+    subj_5 = int(input("What did you get in spanish? "))
+    subj_6 = int(input("What did you get in history? "))
+    subj_7 = int(input("What did you get in geography? "))
 
     marks_dict = marks(subj_1, subj_2, subj_3, subj_4, subj_5, subj_6, subj_7)
     average(subj_1, subj_2, subj_3, subj_4, subj_5, subj_6, subj_7, name)
