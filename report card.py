@@ -43,10 +43,10 @@ def main():
 
     topper = max(all_students, key=lambda x: all_students[x]["avg"])
     
-    print("\n--- Results ---")
+    print("Results")
     for name, data in all_students.items():
         print(f"{name}: {data['avg']:.2f}%")
     
-    print(f"\n🏆 Topper: {topper} with {all_students[topper]['avg']:.2f}%")
+    print(f" Topper: {topper} with {all_students[topper]['avg']:.2f}%")
 
 main()
