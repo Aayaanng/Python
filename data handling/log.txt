@@ -1,0 +1,3 @@
+[2026-06-11 15:23:59] Program started
+[2026-06-11 15:24:01] User entered name: a
+[2026-06-11 15:24:01] Program finished successfully
