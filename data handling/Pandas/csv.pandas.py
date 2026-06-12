@@ -20,16 +20,22 @@ print(df.iloc[0]['name'])   # 'Alice'
 print(df.at[2, 'score'])    # Charlie's score: 92
 #saving dataframes to files
 # After you have changed the data, save it back
+import os
+import pandas as pd
 
+# 1. Define your folder name
+target_folder = "data handling/Pandas"
 
-# Define the folder prefix
-folder = "PANDAS"
+# 2. Create the folder automatically if it doesn't exist yet
+if not os.path.exists(target_folder):
+    os.makedirs(target_folder)
 
-# Save back to CSV in the specific folder
-df.to_csv(folder + 'students_updated.csv', index=False)
+# 3. Combine the folder name with your file names
+csv_path = os.path.join(target_folder, 'students_updated.csv')
+json_path = os.path.join(target_folder, 'students.json')
+excel_path = os.path.join(target_folder, 'students.xlsx')
 
-# Save to JSON format in the specific folder
-df.to_json(folder + 'students.json', orient='records', indent=4)
-
-# Save to Excel format in the specific folder
-df.to_excel(folder + 'students.xlsx', index=False)
+# 4. Save the files directly into the PANDAS folder
+df.to_csv(csv_path, index=False)
+df.to_json(json_path, orient='records', indent=4)
+df.to_excel(excel_path, index=False)

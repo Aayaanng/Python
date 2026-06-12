@@ -1,0 +1,32 @@
+[
+    {
+        "name":"Alice",
+        "age":10,
+        "city":"Delhi",
+        "score":88
+    },
+    {
+        "name":"Bob",
+        "age":11,
+        "city":"Mumbai",
+        "score":75
+    },
+    {
+        "name":"Charlie",
+        "age":10,
+        "city":"Chennai",
+        "score":92
+    },
+    {
+        "name":"David",
+        "age":12,
+        "city":"Bangalore",
+        "score":85
+    },
+    {
+        "name":"Eva",
+        "age":11,
+        "city":"Pune",
+        "score":90
+    }
+]
