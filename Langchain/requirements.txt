@@ -1,0 +1,14 @@
+# Install core LangChain library
+pip install langchain
+
+
+# Install Google Gemini integration
+pip install langchain-google-genai
+
+
+# Install OpenAI integration (optional)
+pip install langchain-openai
+
+
+# Install environment variable support
+pip install python-dotenv

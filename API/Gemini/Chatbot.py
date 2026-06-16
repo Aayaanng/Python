@@ -18,3 +18,11 @@ while True:
 
     response = chat.send_message(user_input)
     print(f"\nGemini: {response.text}\n")
+#env code
+import os
+from dotenv import load_dotenv
+
+load_dotenv()   # Reads the .env file
+
+api_key = os.getenv("GOOGLE_API_KEY")
+print(api_key)  # Prints your key (safely from the file)
