@@ -20,9 +20,15 @@ emb1 = model.encode(sentence1)
 emb2 = model.encode(sentence2)
 emb3 = model.encode(sentence3)
 
-# Calculate similarity
+# Calculate similarity (returns a 2D tensor)
 score_12 = util.cos_sim(emb1, emb2)
 score_13 = util.cos_sim(emb1, emb3)
 
-print(f'Pizza vs Pizza: {score_12:.2f}')    # High ~0.85
-print(f'Pizza vs Football: {score_13:.2f}') # Low ~0.15
+# FIX: Use .item() to convert the tensor values to standard Python floats
+print(f'Pizza vs Pizza: {score_12.item():.2f}')     # Output: ~0.80
+print(f'Pizza vs Football: {score_13.item():.2f}')  # Output: ~0.17
+#Tokens — How LLMs See Text
+# Example tokenisation (approximate)
+#'Hello, how are you?'  -->  ['Hello', ',', ' how', ' are', ' you', '?']
+
+# This sentence = 6 tokens
