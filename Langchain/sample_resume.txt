@@ -1,0 +1,36 @@
+Aayaann Sharma
+Email: aayaann@example.com | Phone: (555) 123-4567 | Delhi, India
+
+EDUCATION
+Grade 11 Student, Delhi Public School
+Relevant coursework: Computer Science, Mathematics, Physics
+
+TECHNICAL SKILLS
+- Python (intermediate): built GUI applications with tkinter, game development with pygame
+- JavaScript: built browser-based machine learning audio classification project using Teachable Machine
+- HTML/CSS: built a personal developer portfolio website with animations
+- Arduino/electronics: designed a Smart Home Safety Hub combining security and fire/gas detection sensors
+- Git basics
+
+PROJECTS
+Leap Year Checker (Python/Tkinter)
+- Built a desktop GUI application with dark theme styling and input validation
+
+Tic Tac Toe Game (Python/Pygame)
+- Implemented full game logic, win detection, and a simple UI
+
+Audio Note Detector (JavaScript)
+- Used Teachable Machine to classify musical notes from microphone input with noise filtering and confidence visualization
+
+Smart Home Safety Hub (Arduino, Grade 8 Science Fair)
+- Designed a combined security and fire/gas detection system using sensors and microcontroller logic
+
+Developer Portfolio (HTML/CSS/JS)
+- Built a standalone dark-themed personal site with scroll animations
+
+EXTRACURRICULAR
+- Competitive debater (British Parliamentary format), regional tournament participant
+- School football team member
+
+INTERESTS
+RC car building (Tamiya kits), football, programming

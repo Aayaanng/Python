@@ -1,223 +1,274 @@
+"""
+Resume Analyzer powered by Google Gemini
+==========================================
+
+Compares a resume against a job description and returns a structured
+analysis: match score, matched/missing skills, strengths, gaps, and
+suggestions for improvement.
+
+Setup:
+    pip install google-genai PyPDF2 python-docx
+    export GEMINI_API_KEY="your-api-key-here"
+
+Usage:
+    python resume_analyzer.py --resume resume.pdf --job job_description.txt
+    python resume_analyzer.py --resume resume.docx --job "Paste JD text directly"
+"""
+
+import argparse
+import json
 import os
+import sys
 from pathlib import Path
-from typing import Dict, Any, List
+
+from google import genai
+from google.genai import types
+
 import PyPDF2
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableLambda
-from pydantic import BaseModel, Field
+import docx
 
-# ===== STEP 1: Load environment variables from .env file =====
-load_dotenv()
 
-if not os.getenv("GOOGLE_API_KEY"):
-    raise ValueError("GOOGLE_API_KEY not found in .env file")
+MODEL_NAME = "gemini-3.5-flash"  # fast + cheap; swap to gemini-2.5-pro for deeper analysis
 
-# ===== STEP 2: Define output schema =====
-class ResumeAnalysis(BaseModel):
-    candidate_name: str = Field(description="Candidate's full name")
-    match_score: int = Field(description="Match score between 0-100")
-    key_skills: list[str] = Field(description="List of key skills from resume")
-    experience_years: float = Field(description="Total years of experience")
-    strengths: list[str] = Field(description="Candidate's strengths for this role")
-    gaps: list[str] = Field(description="Missing skills/experience")
-    feedback: str = Field(description="Detailed feedback and recommendations")
-    recommendation: str = Field(description="Recommended, Potential, or Not Recommended")
 
-# ===== STEP 3: Text extraction functions =====
-def extract_text_from_pdf(pdf_path: str) -> str:
-    """Extract text from PDF resume"""
-    text = ""
-    with open(pdf_path, 'rb') as f:
-        pdf_reader = PyPDF2.PdfReader(f)
-        for page in pdf_reader.pages:
+# ---------------------------------------------------------------------------
+# Text extraction
+# ---------------------------------------------------------------------------
+
+def extract_text_from_pdf(path: Path) -> str:
+    text_parts = []
+    with open(path, "rb") as f:
+        reader = PyPDF2.PdfReader(f)
+        for page in reader.pages:
             page_text = page.extract_text()
             if page_text:
-                text += page_text
+                text_parts.append(page_text)
+    return "\n".join(text_parts)
+
+
+def extract_text_from_docx(path: Path) -> str:
+    document = docx.Document(str(path))
+    return "\n".join(p.text for p in document.paragraphs if p.text.strip())
+
+
+def extract_text_from_txt(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="ignore")
+
+
+def load_resume_text(resume_path: str) -> str:
+    """Load resume content from a PDF, DOCX, or TXT file."""
+    path = Path(resume_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Resume file not found: {resume_path}")
+
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        text = extract_text_from_pdf(path)
+    elif suffix == ".docx":
+        text = extract_text_from_docx(path)
+    elif suffix == ".txt":
+        text = extract_text_from_txt(path)
+    else:
+        raise ValueError(f"Unsupported resume format: {suffix} (use .pdf, .docx, or .txt)")
+
+    if not text.strip():
+        raise ValueError("No text could be extracted from the resume file. "
+                          "It may be a scanned/image-based PDF.")
     return text.strip()
 
-def extract_text_from_file(file_path: str) -> str:
-    """Extract text from text file"""
-    with open(file_path, 'r', encoding='utf-8') as f:
-        return f.read().strip()
 
-def extract_resume_text(resume_path: str) -> str:
-    """Main extraction function that handles PDF or text"""
-    if resume_path.endswith('.pdf'):
-        return extract_text_from_pdf(resume_path)
-    elif resume_path.endswith('.txt'):
-        return extract_text_from_file(resume_path)
-    else:
-        raise ValueError("Unsupported file format. Use PDF or TXT.")
+def load_job_description(job_arg: str) -> str:
+    """Accept either a path to a file, or raw job description text."""
+    path = Path(job_arg)
+    if path.exists() and path.is_file():
+        suffix = path.suffix.lower()
+        if suffix == ".pdf":
+            return extract_text_from_pdf(path).strip()
+        elif suffix == ".docx":
+            return extract_text_from_docx(path).strip()
+        else:
+            return extract_text_from_txt(path).strip()
+    # Not a file path -> treat the argument itself as the JD text
+    return job_arg.strip()
 
-# ===== STEP 4: Validation function =====
-def validate_inputs(inputs: Dict[str, Any]) -> Dict[str, Any]:
-    """Validate that resume and job description exist"""
-    if not inputs.get("resume_text") or not inputs.get("resume_text").strip():
-        raise ValueError("Resume text is empty")
-    if not inputs.get("job_description") or not inputs.get("job_description").strip():
-        raise ValueError("Job description is empty")
-    return inputs
 
-# ===== STEP 5: Build the LangChain pipeline (FIXED) =====
-# ===== STEP 5: Build the LangChain pipeline =====
+# ---------------------------------------------------------------------------
+# Gemini analysis
+# ---------------------------------------------------------------------------
 
-# Paste your actual secret key directly between the quotes below
-MY_REAL_API_KEY = "AQ.Ab8RN6JtIDlz4V_VtIcNGhxCPWNOGaXQ2CbhJhzRFQfNLp-hmQ" 
+ANALYSIS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "match_score": {
+            "type": "integer",
+            "description": "Overall fit score from 0-100"
+        },
+        "summary": {
+            "type": "string",
+            "description": "2-3 sentence overall assessment"
+        },
+        "matched_skills": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Skills/requirements from the JD that the resume clearly covers"
+        },
+        "missing_skills": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Skills/requirements from the JD not evidenced in the resume"
+        },
+        "strengths": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Notable strengths of the resume relative to this role"
+        },
+        "gaps": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Weaknesses, gaps, or red flags relative to this role"
+        },
+        "improvement_suggestions": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Concrete, actionable edits to improve the resume for this job"
+        },
+        "ats_keywords_to_add": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Specific keywords/phrases worth adding for ATS keyword matching"
+        }
+    },
+    "required": [
+        "match_score", "summary", "matched_skills", "missing_skills",
+        "strengths", "gaps", "improvement_suggestions", "ats_keywords_to_add"
+    ]
+}
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-pro",          # FIX: Changed from 3.5 to a valid production model
-    temperature=0.0,
-    google_api_key=MY_REAL_API_KEY  # FIX: Explicitly passing your pasted key variable
-)
 
-# Keep the rest of your Step 5 code exactly the same
-structured_llm = llm.with_structured_output(ResumeAnalysis)
+def build_prompt(resume_text: str, job_text: str) -> str:
+    return f"""You are an expert technical recruiter and resume coach with deep experience in
+applicant tracking systems (ATS) and hiring across tech, business, and operations roles.
 
-# CLEANED: Prompt instructions relying cleanly on Pydantic's schema rules
-prompt_template = ChatPromptTemplate.from_template(
-    """You are an expert recruiter analyzing a resume against a job description.
-    
-    JOB DESCRIPTION:
-    {job_description}
-    
-    RESUME:
-    {resume_text}
-    
-    Analyze this resume considering skills match, experience relevance, education fit, and overall alignment."""
-)
+Analyze the RESUME against the JOB DESCRIPTION below. Be honest and specific — do not
+inflate the match score. Base every claim strictly on what is actually written in the
+resume; do not assume skills that aren't stated or strongly implied.
 
-# FIXED: Chain pipeline passes data directly to structured_llm
-analysis_chain_with_schema = (
-    RunnableLambda(lambda inputs: validate_inputs(inputs))
-    | RunnableLambda(lambda inputs: {
-        "resume_text": inputs["resume_text"],
-        "job_description": inputs["job_description"]
-    })
-    | prompt_template
-    | structured_llm
-)
+=== JOB DESCRIPTION ===
+{job_text}
 
-# ===== STEP 6: Main analysis function =====
-def analyze_resume(resume_path: str, job_description: str) -> ResumeAnalysis:
-    """Main function to analyze a single resume against a job description"""
-    resume_text = extract_resume_text(resume_path)
-    inputs = {
-        "resume_text": resume_text,
-        "job_description": job_description
-    }
-    return analysis_chain_with_schema.invoke(inputs)
+=== RESUME ===
+{resume_text}
 
-# ===== STEP 7: Bulk Processing & Ranking Function (NEW) =====
-def analyze_and_rank_folder(folder_path: str, job_description: str) -> List[Dict[str, Any]]:
-    """Analyzes all PDFs/TXT files in a folder and returns them ranked by match score"""
-    path = Path(folder_path)
-    if not path.exists() or not path.is_dir():
-        raise FileNotFoundError(f"Directory '{folder_path}' does not exist.")
-        
-    supported_extensions = {'.pdf', '.txt'}
-    results = []
-    
-    print(f"📂 Scanning folder '{folder_path}' for resumes...")
-    
-    for file in path.iterdir():
-        if file.suffix.lower() in supported_extensions:
-            print(f"⏳ Analyzing: {file.name}...")
-            try:
-                analysis = analyze_resume(str(file), job_description)
-                results.append({
-                    "file_name": file.name,
-                    "analysis": analysis,
-                    "score": analysis.match_score
-                })
-            except Exception as e:
-                print(f"❌ Skipped {file.name} due to an error: {e}")
-                
-    # Sort results in descending order by score
-    results.sort(key=lambda x: x["score"], reverse=True)
-    return results
+Return your analysis as JSON matching the required schema. Guidelines:
+- match_score: 0-100, where 100 means the resume is an ideal match for every requirement.
+  Be realistic; a typical decent-but-imperfect match should land in the 50-75 range.
+- matched_skills / missing_skills: pull these directly from requirements implied or stated
+  in the job description.
+- improvement_suggestions: should be concrete rewrites or additions, not generic advice
+  like "tailor your resume" — say exactly what to change.
+- ats_keywords_to_add: exact phrases from the job description that are missing from the
+  resume verbatim and would help with keyword-matching ATS systems.
+"""
 
-# ===== STEP 8: Display results =====
-def display_analysis(analysis: ResumeAnalysis):
-    """Format and display a single analysis report"""
-    print("\n" + "="*60)
-    print("📋 RESUME ANALYSIS REPORT")
-    print("="*60)
-    print(f"\n👤 Candidate: {analysis.candidate_name}")
-    print(f"\n🎯 Match Score: {analysis.match_score}/100")
-    score_icon = "🟢" if analysis.match_score >= 80 else "🟡" if analysis.match_score >= 60 else "🔴"
-    print(f"{score_icon} Recommendation: {analysis.recommendation}")
-    print(f"\n⏱ Experience: {analysis.experience_years} years")
-    print("\n🛠 Key Skills Identified:")
-    for skill in analysis.key_skills:
-        print(f" • {skill}")
-    print("\n💪 Strengths for This Role:")
-    for strength in analysis.strengths:
-        print(f" • {strength}")
-    print("\n⚠️ Missing Skills/Gaps:")
-    for gap in analysis.gaps:
-        print(f" • {gap}")
-    print(f"\n📝 Detailed Feedback:\n{analysis.feedback}")
-    print("\n" + "="*60)
 
-def display_leaderboard(ranked_results: List[Dict[str, Any]]):
-    """Format and display a clean summary leaderboard of candidates"""
-    print("\n" + "🏆" * 25)
-    print("   CANDIDATE RANKING LEADERBOARD")
-    print("🏆" * 25)
-    print(f"{'Rank':<6}{'Candidate Name':<25}{'Score':<8}{'Recommendation':<15}")
-    print("-" * 60)
-    
-    for rank, item in enumerate(ranked_results, 1):
-        analysis = item["analysis"]
-        print(f"{rank:<6}{analysis.candidate_name:<25}{analysis.match_score:<8}{analysis.recommendation:<15}")
+def analyze_resume(resume_text: str, job_text: str, api_key: str | None = None) -> dict:
+    """Send resume + job description to Gemini and return structured analysis."""
+    client = genai.Client(api_key=api_key) if api_key else genai.Client()
+
+    prompt = build_prompt(resume_text, job_text)
+
+    response = client.models.generate_content(
+        model=MODEL_NAME,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=ANALYSIS_SCHEMA,
+            temperature=0.3,
+        ),
+    )
+
+    return json.loads(response.text)
+
+
+# ---------------------------------------------------------------------------
+# Pretty printing
+# ---------------------------------------------------------------------------
+
+def print_report(analysis: dict) -> None:
+    score = analysis["match_score"]
+    bar_len = 30
+    filled = round(bar_len * score / 100)
+    bar = "█" * filled + "░" * (bar_len - filled)
+
+    print("\n" + "=" * 60)
+    print("  RESUME MATCH REPORT")
+    print("=" * 60)
+    print(f"\n  Match Score: {score}/100")
+    print(f"  [{bar}]\n")
+    print(f"  Summary: {analysis['summary']}\n")
+
+    def section(title, items, bullet="✓"):
+        print(f"  {title}")
+        if items:
+            for item in items:
+                print(f"    {bullet} {item}")
+        else:
+            print("    (none)")
+        print()
+
+    section("MATCHED SKILLS", analysis["matched_skills"], "✓")
+    section("MISSING SKILLS", analysis["missing_skills"], "✗")
+    section("STRENGTHS", analysis["strengths"], "+")
+    section("GAPS / WEAKNESSES", analysis["gaps"], "-")
+    section("IMPROVEMENT SUGGESTIONS", analysis["improvement_suggestions"], "→")
+    section("ATS KEYWORDS TO ADD", analysis["ats_keywords_to_add"], "#")
     print("=" * 60 + "\n")
 
-# ===== STEP 9: Example usage =====
-if __name__ == "__main__":
-    job_desc = """
-    Senior Software Engineer Position Requirements:
-    - 5+ years of software development experience
-    - Strong proficiency in Python, JavaScript
-    - Experience with cloud platforms (AWS, Azure)
-    - Knowledge of machine learning frameworks
-    - Bachelor's degree in Computer Science or related field
-    """
-    
-    # Mode Toggle: Set to True to analyze a full folder, False for a single file
-    RUN_BULK_FOLDER_ANALYSIS = True
-    
-    if RUN_BULK_FOLDER_ANALYSIS:
-        # Create a folder named 'resumes' and place your target files inside it
-        target_folder = "./resumes"
-        
-        # Helper to dynamically build folder for easy local testing
-        os.makedirs(target_folder, exist_ok=True)
-        
-        try:
-            ranked_candidates = analyze_and_rank_folder(target_folder, job_desc)
-            
-            if not ranked_candidates:
-                print(f"ℹ️ No resumes found in '{target_folder}'. Drop some .pdf or .txt files inside.")
-            else:
-                # 1. Show summary list
-                display_leaderboard(ranked_candidates)
-                
-                # 2. Print out full analysis details for the #1 top matching profile
-                print("🌟 Top Choice Candidate Deep Dive:")
-                display_analysis(ranked_candidates[0]["analysis"])
-                
-        except Exception as e:
-            print(f"❌ System Error: {e}")
-            
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Analyze a resume against a job description using Google Gemini."
+    )
+    parser.add_argument("--resume", required=True, help="Path to resume file (.pdf, .docx, .txt)")
+    parser.add_argument("--job", required=True, help="Path to job description file, or raw JD text")
+    parser.add_argument("--json", action="store_true", help="Output raw JSON instead of a formatted report")
+    parser.add_argument("--out", help="Optional path to save the JSON result")
+    args = parser.parse_args()
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("ERROR: Set the GEMINI_API_KEY environment variable first.\n"
+              "  export GEMINI_API_KEY='AQ.Ab8RN6JtIDlz4V_VtIcNGhxCPWNOGaXQ2CbhJhzRFQfNLp-hmQ'", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        resume_text = load_resume_text(args.resume)
+        job_text = load_job_description(args.job)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print("Analyzing resume against job description...", file=sys.stderr)
+
+    try:
+        analysis = analyze_resume(resume_text, job_text, api_key=api_key)
+    except Exception as e:
+        print(f"ERROR: Gemini API call failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if args.out:
+        Path(args.out).write_text(json.dumps(analysis, indent=2))
+        print(f"Saved JSON result to {args.out}", file=sys.stderr)
+
+    if args.json:
+        print(json.dumps(analysis, indent=2))
     else:
-        # Single file analysis fallback
-        single_resume = "resume.pdf"
-        try:
-            result = analyze_resume(single_resume, job_desc)
-            display_analysis(result)
-        except FileNotFoundError:
-            print("❌ Single resume file not found.")
-        except Exception as e:
-            print(f"❌ Error: {e}")
+        print_report(analysis)
+
+
+if __name__ == "__main__":
+    main()
