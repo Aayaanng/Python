@@ -1,0 +1,5 @@
+print("Aayaann Gupta")
+print(input("Enter you age."))
+print(36*44)
+print("Hello World")
+print(2**4+(5+5)**(1+1))
