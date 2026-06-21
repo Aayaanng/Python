@@ -1,6 +1,6 @@
 from sentence_transformers import SentenceTransformer,util
 from huggingface_hub import login
-login(token="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")
+login(token="your hugging face id")
 
 # Load a pre-trained model
 model = SentenceTransformer('all-MiniLM-L6-v2')
