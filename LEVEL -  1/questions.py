@@ -1,6 +1,0 @@
-name = input("What is your name?")
-age = input("What is your age?")
-edu = input("What is your eduction?")
-hobby = input("What is your hobby?")
-sub = input("What is your favourite subject?")
-print(name + age + edu + hobby + sub)
