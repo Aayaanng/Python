@@ -1,0 +1,11 @@
+print("Welcome to Aayaanns Calculater app.")
+a = int(input("Enter a number.."))
+b = int(input("enter another number."))
+
+print("The sum of the two numbers is", a + b)
+print("The difference of the two numbers is", a - b)
+print("The product of the two numbers is", a * b)
+print("The division of the two numbers is", a / b)
+print("The floor division of the two numbers is", a // b)
+print("The modulus of the two numbers is", a % b)
+print("The power of the two numbers is", a ** b)
