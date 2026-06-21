@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Recall — Flashcard Study Deck</title>
+      <script src="https://cdn.tailwindcss.com"></script>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+      <style>
+         :root{
+         --ink:#16213E;
+         --ink-soft:#243456;
+         --paper:#F2EDE4;
+         --paper-dim:#E7E0D2;
+         --gold:#E8A94A;
+         --gold-deep:#C9842A;
+         --correct:#3F7A56;
+         --wrong:#B5453A;
+         }
+         *{box-sizing:border-box;}
+         body{
+         background:var(--ink);
+         background-image:
+         radial-gradient(circle at 15% 10%, rgba(232,169,74,0.07), transparent 40%),
+         radial-gradient(circle at 90% 80%, rgba(232,169,74,0.06), transparent 45%);
+         font-family:'Inter',sans-serif;
+         color:var(--paper);
+         min-height:100vh;
+         }
+         .font-display{font-family:'Lora',serif;}
+         .font-mono{font-family:'JetBrains Mono',monospace;}
+         /* card flip */
+         .scene{ perspective:1800px; }
+         .card-flip{
+         position:relative;
+         width:100%;
+         height:100%;
+         transition:transform 0.55s cubic-bezier(.4,.2,.2,1);
+         transform-style:preserve-3d;
+         }
+         .card-flip.flipped{ transform:rotateY(180deg); }
+         .card-face{
+         position:absolute;
+         inset:0;
+         backface-visibility:hidden;
+         -webkit-backface-visibility:hidden;
+         border-radius:1rem;
+         }
+         .card-back{ transform:rotateY(180deg); }
+         .paper-texture{
+         background-color:var(--paper);
+         background-image:
+         repeating-linear-gradient(0deg, rgba(22,33,62,0.035) 0px, rgba(22,33,62,0.035) 1px, transparent 1px, transparent 28px);
+         }
+         .grade-stamp{
+         position:absolute;
+         font-family:'Lora',serif;
+         font-weight:700;
+         font-style:italic;
+         border:4px solid currentColor;
+         border-radius:0.6rem;
+         padding:0.15rem 0.9rem;
+         transform:rotate(-12deg) scale(0.6);
+         opacity:0;
+         pointer-events:none;
+         transition:transform 0.35s cubic-bezier(.34,1.56,.64,1), opacity 0.25s ease;
+         }
+         .grade-stamp.show{
+         transform:rotate(-12deg) scale(1);
+         opacity:0.9;
+         }
+         .deck-shadow-1{ box-shadow: 0 1px 0 var(--paper-dim), 0 14px 24px -8px rgba(0,0,0,0.45); }
+         .progress-track{
+         height:6px;
+         background:rgba(242,237,228,0.12);
+         border-radius:99px;
+         overflow:hidden;
+         }
+         .progress-fill{
+         height:100%;
+         background:linear-gradient(90deg, var(--gold-deep), var(--gold));
+         border-radius:99px;
+         transition:width 0.4s ease;
+         }
+         .btn-press{ transition: transform 0.12s ease, box-shadow 0.12s ease; }
+         .btn-press:active{ transform: translateY(2px); }
+         .tally-mark{
+         display:inline-block;
+         width:3px;
+         height:16px;
+         background:var(--gold);
+         margin-right:3px;
+         border-radius:1px;
+         }
+         @keyframes popIn{
+         0%{ opacity:0; transform:translateY(6px) scale(0.98); }
+         100%{ opacity:1; transform:translateY(0) scale(1); }
+         }
+         .pop-in{ animation:popIn 0.35s ease both; }
+         @keyframes confettiFall{
+         0%{ transform: translateY(-10px) rotate(0deg); opacity:1; }
+         100%{ transform: translateY(220px) rotate(360deg); opacity:0; }
+         }
+         .confetti-piece{
+         position:absolute;
+         top:0;
+         animation:confettiFall 1.4s ease-in forwards;
+         }
+         @media (prefers-reduced-motion: reduce){
+         .card-flip, .progress-fill, .grade-stamp, .pop-in, .confetti-piece{ transition:none !important; animation:none !important; }
+         }
+         .focus-ring:focus-visible{
+         outline:3px solid var(--gold);
+         outline-offset:2px;
+         }
+         ::-webkit-scrollbar{ width:8px; }
+         ::-webkit-scrollbar-thumb{ background:rgba(232,169,74,0.4); border-radius:99px; }
+      </style>
+   </head>
+   <body>
+      <div id="app" class="min-h-screen flex flex-col items-center px-4 lg:px-8 py-8 sm:py-12 lg:py-14">
+         <!-- HEADER -->
+         <header class="w-full max-w-2xl lg:max-w-3xl flex items-center justify-between mb-6 sm:mb-8">
+            <div>
+               <p class="font-mono text-[11px] tracking-[0.25em] uppercase text-[var(--gold)] mb-1">Study Deck</p>
+               <h1 class="font-display text-2xl sm:text-3xl lg:text-4xl font-semibold leading-tight">Recall</h1>
+            </div>
+            <div class="text-right">
+               <p class="font-mono text-[11px] tracking-[0.2em] uppercase text-[var(--paper-dim)]/70 mb-1" id="deckLabelTop">History · Set 1</p>
+               <select id="deckSelect" class="font-mono text-xs bg-[var(--ink-soft)] border border-[var(--gold)]/30 rounded-md px-2 py-1.5 text-[var(--paper)] focus-ring cursor-pointer">
+                  <option value="history">📜 World History</option>
+                  <option value="science">🧪 General Science</option>
+               </select>
+            </div>
+         </header>
+         <!-- STATS STRIP -->
+         <div class="w-full max-w-2xl lg:max-w-3xl grid grid-cols-3 gap-2 sm:gap-3 mb-6">
+            <div class="paper-texture rounded-xl px-3 lg:px-5 py-3 sm:py-4 lg:py-5 text-[var(--ink)] deck-shadow-1">
+               <p class="font-mono text-[10px] uppercase tracking-wider text-[var(--ink)]/50 mb-1">Score</p>
+               <p class="font-display text-xl sm:text-2xl lg:text-3xl font-bold"><span id="scoreCorrect">0</span><span class="text-[var(--ink)]/40 text-base">/<span id="scoreTotal">0</span></span></p>
+            </div>
+            <div class="paper-texture rounded-xl px-3 lg:px-5 py-3 sm:py-4 lg:py-5 text-[var(--ink)] deck-shadow-1">
+               <p class="font-mono text-[10px] uppercase tracking-wider text-[var(--ink)]/50 mb-1">Streak</p>
+               <p class="font-display text-xl sm:text-2xl lg:text-3xl font-bold flex items-center gap-1">
+                  <span id="streakCount">0</span>
+                  <span id="streakFire" class="text-base opacity-0 transition-opacity">🔥</span>
+               </p>
+            </div>
+            <div class="paper-texture rounded-xl px-3 lg:px-5 py-3 sm:py-4 lg:py-5 text-[var(--ink)] deck-shadow-1">
+               <p class="font-mono text-[10px] uppercase tracking-wider text-[var(--ink)]/50 mb-1">Card</p>
+               <p class="font-display text-xl sm:text-2xl lg:text-3xl font-bold"><span id="cardIndex">1</span><span class="text-[var(--ink)]/40 text-base">/<span id="cardTotal">8</span></span></p>
+            </div>
+         </div>
+         <!-- PROGRESS -->
+         <div class="w-full max-w-2xl lg:max-w-3xl progress-track mb-8">
+            <div id="progressFill" class="progress-fill" style="width:0%"></div>
+         </div>
+         <!-- CARD SCENE -->
+         <div class="w-full max-w-2xl lg:max-w-3xl scene mb-7 h-[300px] sm:h-[340px] lg:h-[400px]">
+            <div id="cardFlip" class="card-flip">
+               <!-- FRONT (question) -->
+               <div class="card-face paper-texture deck-shadow-1 flex flex-col p-6 sm:p-8 lg:p-10 cursor-pointer focus-ring" id="cardFrontFace" tabindex="0" role="button" aria-label="Flip card to reveal answer">
+                  <div class="flex items-center justify-between mb-4">
+                     <span id="catTag" class="font-mono text-[10px] lg:text-[11px] uppercase tracking-wider px-2.5 py-1 rounded-full bg-[var(--ink)]/8 text-[var(--ink)]/70 border border-[var(--ink)]/10"></span>
+                     <span class="font-mono text-[10px] lg:text-[11px] uppercase tracking-wider text-[var(--ink)]/40">Tap to flip</span>
+                  </div>
+                  <div class="flex-1 flex items-center justify-center text-center">
+                     <p id="questionText" class="font-display text-xl sm:text-2xl lg:text-3xl font-medium text-[var(--ink)] leading-snug px-1 lg:px-4"></p>
+                  </div>
+                  <div class="text-center">
+                     <svg class="w-5 h-5 mx-auto text-[var(--ink)]/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                     </svg>
+                  </div>
+               </div>
+               <!-- BACK (answer) -->
+               <div class="card-face card-back deck-shadow-1 flex flex-col p-6 sm:p-8 lg:p-10" style="background:var(--ink-soft); border:1px solid rgba(232,169,74,0.25);">
+                  <div class="flex items-center justify-between mb-4">
+                     <span class="font-mono text-[10px] lg:text-[11px] uppercase tracking-wider px-2.5 py-1 rounded-full bg-[var(--gold)]/15 text-[var(--gold)] border border-[var(--gold)]/30">Answer</span>
+                  </div>
+                  <div class="flex-1 flex items-center justify-center text-center relative overflow-hidden">
+                     <p id="answerText" class="font-display text-xl sm:text-2xl lg:text-3xl font-medium text-[var(--paper)] leading-snug px-1 lg:px-4"></p>
+                     <div id="stampCorrect" class="grade-stamp text-[var(--correct)]" style="left:8%; top:10%;">CORRECT</div>
+                     <div id="stampWrong" class="grade-stamp text-[var(--wrong)]" style="left:8%; top:10%;">REVIEW</div>
+                  </div>
+               </div>
+            </div>
+         </div>
+         <!-- ANSWER CONTROLS (shown after flip) -->
+         <div id="gradeControls" class="w-full max-w-2xl lg:max-w-3xl grid grid-cols-2 gap-3 mb-4 opacity-0 pointer-events-none transition-opacity duration-300">
+            <button id="btnWrong" class="btn-press focus-ring flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[var(--wrong)]/15 border border-[var(--wrong)]/40 text-[var(--wrong)] font-semibold text-sm hover:bg-[var(--wrong)]/25">
+               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
+               </svg>
+               I got it wrong
+            </button>
+            <button id="btnRight" class="btn-press focus-ring flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[var(--correct)]/15 border border-[var(--correct)]/40 text-[var(--correct)] font-semibold text-sm hover:bg-[var(--correct)]/25">
+               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+               </svg>
+               I got it right
+            </button>
+         </div>
+         <!-- NAV ROW -->
+         <div class="w-full max-w-2xl lg:max-w-3xl flex items-center justify-between gap-3">
+            <button id="btnPrev" class="btn-press focus-ring flex items-center gap-1.5 px-4 lg:px-5 py-2.5 lg:py-3 rounded-lg bg-[var(--ink-soft)] border border-[var(--gold)]/20 text-[var(--paper)]/80 font-mono text-xs uppercase tracking-wider hover:border-[var(--gold)]/50 disabled:opacity-30 disabled:cursor-not-allowed">
+               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+               </svg>
+               Prev
+            </button>
+            <button id="btnReset" class="font-mono text-[11px] uppercase tracking-wider text-[var(--paper)]/40 hover:text-[var(--gold)] transition-colors">Restart deck</button>
+            <button id="btnNext" class="btn-press focus-ring flex items-center gap-1.5 px-4 lg:px-5 py-2.5 lg:py-3 rounded-lg bg-[var(--ink-soft)] border border-[var(--gold)]/20 text-[var(--paper)]/80 font-mono text-xs uppercase tracking-wider hover:border-[var(--gold)]/50 disabled:opacity-30 disabled:cursor-not-allowed">
+               Next
+               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+               </svg>
+            </button>
+         </div>
+         <!-- COMPLETION OVERLAY -->
+         <div id="completeOverlay" class="fixed inset-0 bg-[var(--ink)]/95 backdrop-blur-sm flex items-center justify-center px-4 z-50 opacity-0 pointer-events-none transition-opacity duration-300">
+            <div class="paper-texture rounded-2xl p-8 sm:p-10 max-w-sm w-full text-center text-[var(--ink)] deck-shadow-1 relative overflow-hidden" id="confettiZone">
+               <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-[var(--ink)]/50 mb-2">Deck complete</p>
+               <h2 class="font-display text-3xl font-bold mb-1" id="finalScoreText">0/8</h2>
+               <p class="font-display text-lg italic text-[var(--ink)]/70 mb-6" id="finalMessage">Nice work.</p>
+               <div class="flex gap-3">
+                  <button id="btnReviewMissed" class="flex-1 btn-press focus-ring py-3 rounded-lg border border-[var(--ink)]/20 text-[var(--ink)]/80 font-mono text-xs uppercase tracking-wider hover:border-[var(--ink)]/40">Review missed</button>
+                  <button id="btnRestart" class="flex-1 btn-press focus-ring py-3 rounded-lg bg-[var(--gold)] text-[var(--ink)] font-mono text-xs uppercase tracking-wider font-bold hover:bg-[var(--gold-deep)]">Try again</button>
+               </div>
+            </div>
+         </div>
+         <p class="font-mono text-[10px] text-[var(--paper)]/30 mt-8 tracking-wider">SPACE to flip · ← → to navigate</p>
+      </div>
+      <script>
+         (function(){
+         
+           const DECKS = {
+             history: [
+               { cat: "Ancient World", q: "Which river civilization built the Great Pyramid of Giza?", a: "Ancient Egypt — built around 2560 BCE during the reign of Pharaoh Khufu." },
+               { cat: "Ancient World", q: "What was the name of the trade network connecting China to the Mediterranean?", a: "The Silk Road." },
+               { cat: "Medieval Era", q: "In what year did the Battle of Hastings take place?", a: "1066 — William the Conqueror defeated King Harold II." },
+               { cat: "Revolutions", q: "Which document, signed in 1215, limited the power of the English king?", a: "The Magna Carta." },
+               { cat: "Revolutions", q: "What event in 1789 is considered the start of the French Revolution?", a: "The Storming of the Bastille." },
+               { cat: "Modern History", q: "Which treaty officially ended World War I in 1919?", a: "The Treaty of Versailles." },
+               { cat: "Modern History", q: "Who was the first Prime Minister of independent India?", a: "Jawaharlal Nehru, in 1947." },
+               { cat: "Modern History", q: "The Berlin Wall fell in which year?", a: "1989, leading to German reunification in 1990." }
+             ],
+             science: [
+               { cat: "Physics", q: "What is the SI unit of electric current?", a: "The Ampere (A)." },
+               { cat: "Physics", q: "According to Newton's third law, every action has an equal and opposite what?", a: "Reaction." },
+               { cat: "Chemistry", q: "What is the chemical symbol for Gold?", a: "Au, from the Latin 'aurum'." },
+               { cat: "Chemistry", q: "What type of bond forms when electrons are shared between atoms?", a: "A covalent bond." },
+               { cat: "Biology", q: "What is the powerhouse of the cell, producing most of its ATP?", a: "The mitochondria." },
+               { cat: "Biology", q: "What process do plants use to convert sunlight into chemical energy?", a: "Photosynthesis." },
+               { cat: "Earth Science", q: "What is the outermost layer of the Earth called?", a: "The crust." },
+               { cat: "Earth Science", q: "What scale is used to measure the magnitude of earthquakes?", a: "The Richter scale (or modern Moment Magnitude scale)." }
+             ]
+           };
+         
+           const deckLabels = { history: "History · World History", science: "Science · General Science" };
+         
+           // state
+           let currentDeckKey = "history";
+           let cards = [];
+           let idx = 0;
+           let flipped = false;
+           let answered = []; // per-card: null | true | false
+           let correctCount = 0;
+           let streak = 0;
+           let bestStreak = 0;
+         
+           // elements
+           const el = {
+             deckSelect: document.getElementById('deckSelect'),
+             deckLabelTop: document.getElementById('deckLabelTop'),
+             scoreCorrect: document.getElementById('scoreCorrect'),
+             scoreTotal: document.getElementById('scoreTotal'),
+             streakCount: document.getElementById('streakCount'),
+             streakFire: document.getElementById('streakFire'),
+             cardIndex: document.getElementById('cardIndex'),
+             cardTotal: document.getElementById('cardTotal'),
+             progressFill: document.getElementById('progressFill'),
+             cardFlip: document.getElementById('cardFlip'),
+             cardFrontFace: document.getElementById('cardFrontFace'),
+             catTag: document.getElementById('catTag'),
+             questionText: document.getElementById('questionText'),
+             answerText: document.getElementById('answerText'),
+             stampCorrect: document.getElementById('stampCorrect'),
+             stampWrong: document.getElementById('stampWrong'),
+             gradeControls: document.getElementById('gradeControls'),
+             btnWrong: document.getElementById('btnWrong'),
+             btnRight: document.getElementById('btnRight'),
+             btnPrev: document.getElementById('btnPrev'),
+             btnNext: document.getElementById('btnNext'),
+             btnReset: document.getElementById('btnReset'),
+             completeOverlay: document.getElementById('completeOverlay'),
+             finalScoreText: document.getElementById('finalScoreText'),
+             finalMessage: document.getElementById('finalMessage'),
+             btnRestart: document.getElementById('btnRestart'),
+             btnReviewMissed: document.getElementById('btnReviewMissed'),
+             confettiZone: document.getElementById('confettiZone'),
+           };
+         
+           function shuffle(arr){
+             const a = arr.slice();
+             for(let i=a.length-1;i>0;i--){
+               const j = Math.floor(Math.random()*(i+1));
+               [a[i],a[j]]=[a[j],a[i]];
+             }
+             return a;
+           }
+         
+           function loadDeck(key, cardSet){
+             currentDeckKey = key;
+             cards = cardSet || shuffle(DECKS[key]);
+             idx = 0;
+             flipped = false;
+             answered = new Array(cards.length).fill(null);
+             correctCount = 0;
+             streak = 0;
+             el.deckLabelTop.textContent = deckLabels[key];
+             el.cardTotal.textContent = cards.length;
+             el.scoreTotal.textContent = cards.length;
+             renderCard();
+             updateStats();
+             hideComplete();
+           }
+         
+           function renderCard(){
+             const c = cards[idx];
+             el.catTag.textContent = c.cat;
+             el.questionText.textContent = c.q;
+             el.answerText.textContent = c.a;
+             el.cardIndex.textContent = idx + 1;
+             el.cardFlip.classList.remove('flipped');
+             flipped = false;
+             el.gradeControls.classList.add('opacity-0','pointer-events-none');
+             el.stampCorrect.classList.remove('show');
+             el.stampWrong.classList.remove('show');
+             el.btnPrev.disabled = idx === 0;
+             el.btnNext.disabled = answered[idx] === null;
+         
+             // if already answered, reflect grade on back+stamp without forcing flip
+             if(answered[idx] === true){ el.stampCorrect.classList.add('show'); }
+             if(answered[idx] === false){ el.stampWrong.classList.add('show'); }
+           }
+         
+           function updateStats(){
+             el.scoreCorrect.textContent = correctCount;
+             el.streakCount.textContent = streak;
+             el.streakFire.style.opacity = streak >= 3 ? '1' : '0';
+             const answeredCount = answered.filter(a => a !== null).length;
+             const pct = cards.length ? Math.round((answeredCount / cards.length) * 100) : 0;
+             el.progressFill.style.width = pct + '%';
+           }
+         
+           function flipCard(){
+             if(answered[idx] !== null) return; // already graded, no need to re-flip logic but allow viewing
+             flipped = !flipped;
+             el.cardFlip.classList.toggle('flipped', flipped);
+             if(flipped){
+               el.gradeControls.classList.remove('opacity-0','pointer-events-none');
+             } else {
+               el.gradeControls.classList.add('opacity-0','pointer-events-none');
+             }
+           }
+         
+           function grade(isCorrect){
+             if(answered[idx] !== null) return;
+             answered[idx] = isCorrect;
+             if(isCorrect){
+               correctCount++;
+               streak++;
+               bestStreak = Math.max(bestStreak, streak);
+               el.stampCorrect.classList.add('show');
+             } else {
+               streak = 0;
+               el.stampWrong.classList.add('show');
+             }
+             updateStats();
+             el.btnNext.disabled = false;
+         
+             setTimeout(() => {
+               if(idx < cards.length - 1){
+                 idx++;
+                 renderCard();
+               } else {
+                 showComplete();
+               }
+             }, 850);
+           }
+         
+           function goPrev(){
+             if(idx === 0) return;
+             idx--;
+             renderCard();
+           }
+         
+           function goNext(){
+             if(answered[idx] === null) return;
+             if(idx < cards.length - 1){
+               idx++;
+               renderCard();
+             } else {
+               showComplete();
+             }
+           }
+         
+           function showComplete(){
+             el.finalScoreText.textContent = correctCount + '/' + cards.length;
+             const pct = correctCount / cards.length;
+             let msg = "Keep going — you've got this.";
+             if(pct === 1) msg = "Perfect deck! Outstanding recall.";
+             else if(pct >= 0.75) msg = "Strong work — almost flawless.";
+             else if(pct >= 0.5) msg = "Solid effort. A bit more review will lock it in.";
+             el.finalMessage.textContent = msg;
+             el.completeOverlay.classList.remove('opacity-0','pointer-events-none');
+             el.btnReviewMissed.disabled = !answered.some(a => a === false);
+             el.btnReviewMissed.style.opacity = answered.some(a => a === false) ? '1' : '0.4';
+             launchConfetti();
+           }
+         
+           function hideComplete(){
+             el.completeOverlay.classList.add('opacity-0','pointer-events-none');
+           }
+         
+           function launchConfetti(){
+             const colors = ['#E8A94A','#C9842A','#3F7A56','#16213E'];
+             for(let i=0;i<24;i++){
+               const piece = document.createElement('div');
+               piece.className = 'confetti-piece';
+               piece.style.left = Math.random()*100 + '%';
+               piece.style.width = (4 + Math.random()*4) + 'px';
+               piece.style.height = (4 + Math.random()*4) + 'px';
+               piece.style.background = colors[Math.floor(Math.random()*colors.length)];
+               piece.style.animationDelay = (Math.random()*0.3) + 's';
+               piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+               el.confettiZone.appendChild(piece);
+               setTimeout(() => piece.remove(), 1800);
+             }
+           }
+         
+           function restartDeck(){
+             loadDeck(currentDeckKey);
+           }
+         
+           function reviewMissed(){
+             const missed = cards.filter((c, i) => answered[i] === false);
+             if(missed.length === 0) return;
+             loadDeck(currentDeckKey, shuffle(missed));
+           }
+         
+           // events
+           el.cardFrontFace.addEventListener('click', flipCard);
+           el.cardFrontFace.addEventListener('keydown', (e) => {
+             if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); flipCard(); }
+           });
+           el.btnRight.addEventListener('click', () => grade(true));
+           el.btnWrong.addEventListener('click', () => grade(false));
+           el.btnPrev.addEventListener('click', goPrev);
+           el.btnNext.addEventListener('click', goNext);
+           el.btnReset.addEventListener('click', restartDeck);
+           el.btnRestart.addEventListener('click', restartDeck);
+           el.btnReviewMissed.addEventListener('click', reviewMissed);
+           el.deckSelect.addEventListener('change', (e) => loadDeck(e.target.value));
+         
+           document.addEventListener('keydown', (e) => {
+             if(!el.completeOverlay.classList.contains('opacity-0')) return;
+             if(e.code === 'Space'){ e.preventDefault(); flipCard(); }
+             if(e.key === 'ArrowLeft') goPrev();
+             if(e.key === 'ArrowRight') goNext();
+           });
+         
+           // init
+           loadDeck('history');
+         
+         })();
+      </script>
+   </body>
+</html>
