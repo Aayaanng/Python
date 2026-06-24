@@ -1,0 +1,10 @@
+# YAML Example — a configuration file
+app_name: My Web Scraper
+version: 1.0
+settings:
+  delay_between_requests: 2
+  output_format: csv
+  target_tags:
+    - h1
+    - p
+    - a

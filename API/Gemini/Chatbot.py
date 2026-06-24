@@ -14,7 +14,7 @@ if not api_key:
 client = genai.Client(api_key=api_key)
 
 # 4. Initialize the chat session using a standard production model
-chat = client.chats.create(model="gemini-1.5-flash")
+chat = client.chats.create(model="gemini-3.5-flash")
 
 print("Gemini Chatbot Initialized! Type 'quit' or 'exit' to end the session.\n")
 
